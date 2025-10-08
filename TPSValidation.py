@@ -1,10 +1,9 @@
 """
 Script that automatically calculates and creates a text document to paste into the TPS validation report. 
+When Launched a gui will appear for the user to select their local energies
 Puts the dose values to a file called "doses." This script may require setting up the file_name variable to point to a user accessible file location.
 If the file already exists it will create a new file with an incrementing number added.
 Check the section below headed "DEFAULT LOCAL ENERGIES" to adjust
-
-not sure if functional
 """
 
 file_name = '\\\\Client\\Z$\\RayStation\\Scripts\\doses.txt'
@@ -13,6 +12,8 @@ from connect import *
 import itertools
 from datetime import datetime
 import os
+from tkinter import *
+from tkinter import ttk
 
 case = get_current("Case")
 examination = get_current("Examination")
@@ -39,6 +40,47 @@ hard_wedge_fields = ["W15", "W30", "W45", "W60"]
 depths = ["10 cm", "20 cm"]
 non_fff_fields = print_out_structure[2:]
 
+# GRAPHICS
+
+class LocalAccessoriesWindow():
+    def __init__(self):
+        self.window = Tk()
+        energy_frame = Frame(self.window, highlightbackground="black",highlightthickness=2)
+        energy_title = Label(energy_frame, text="Select energies for local machine")
+        energy_title.pack()
+        self.vars = []
+        i=0
+        for energy in report_energies:
+            new_var = IntVar()
+            new_checkbox = Checkbutton(energy_frame, text=energy, variable=new_var)
+            if energy in local_energies:
+                new_checkbox.select()
+            new_checkbox.pack()
+            self.vars.append(new_var)
+            i+=1
+        accessory_frame = Frame(self.window, highlightbackground="black",highlightthickness=2)
+        acc_title = Label(accessory_frame, text="Select accessories for local machine")
+        acc_title.pack()
+        self.hard_wedge_bool = IntVar()
+        hard_wedge_checkbox = Checkbutton(accessory_frame, text="Hard Wedges", variable=self.hard_wedge_bool)
+        hard_wedge_checkbox.pack()
+        self.edw_bool = IntVar()
+        edw_checkbox = Checkbutton(accessory_frame, text="EDW", variable=self.edw_bool)
+        edw_checkbox.pack()
+        edw_checkbox.select()
+
+        ok_button = Button(self.window, text= "Accept", width=20, command=self.ok_button_clicked)
+
+        energy_frame.pack()
+        accessory_frame.pack()
+        ok_button.pack(pady=20)
+        self.window.mainloop()
+
+
+    def ok_button_clicked(self):
+        selections = list(map(lambda j: j.get(), self.vars))
+        self.local_energies = [i for (i, v) in zip(report_energies, selections) if v]
+        self.window.destroy()
 
 # CLASS STRUCTURES FOR PRINTING OUT TO FILE TO PASTE INTO REPORT EXCEL
 
@@ -182,17 +224,19 @@ def get_dose_at(plan, beam, point):
 
 def main():
     global file_name
+    window = LocalAccessoriesWindow()
+    local_energies = window.local_energies
     new_report = FullReport()
     for energy in local_energies:
         set_energies_in_plan(energy, open_field_plan)
         open_field_plan.BeamSets[0].ComputeDose(DoseAlgorithm=DOSE_ALGO, ForceRecompute=1)
         new_report.add_doses(get_open_field_doses(energy))
-        if "FFF" not in energy and MACHINE_HAS_EDW:
+        if "FFF" not in energy and window.edw_bool.get():
             set_energies_in_plan(energy, edw_plan)
             edw_plan.BeamSets[0].ComputeDose(DoseAlgorithm=DOSE_ALGO, ForceRecompute=1)
             new_report.add_doses(get_edw_doses(energy))
-        if "FFF" not in energy and MACHINE_HAS_HARD_WEDGES:
-            return Error('hard wedges not implemented in script')
+        if "FFF" not in energy and window.hard_wedge_bool.get():
+            return Exception('hard wedges not implemented in script')
     output = new_report.get_doses()
     print("File sample...")
     print(output)
